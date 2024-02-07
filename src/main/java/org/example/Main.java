@@ -8,10 +8,7 @@ import com.vaticle.typedb.driver.api.TypeDBTransaction;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
-import static com.vaticle.typeql.lang.TypeQL.cVar;
-
 public class Main {
-    static int k = 0; // Counter
     public static void main(String[] args) {
         final String DB_NAME = "iam";
         final String SERVER_ADDR = "127.0.0.1:1729";
