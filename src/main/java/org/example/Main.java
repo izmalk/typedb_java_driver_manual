@@ -5,153 +5,184 @@ import com.vaticle.typedb.driver.api.TypeDBDriver;
 import com.vaticle.typedb.driver.api.TypeDBOptions;
 import com.vaticle.typedb.driver.api.TypeDBSession;
 import com.vaticle.typedb.driver.api.TypeDBTransaction;
-import com.vaticle.typeql.lang.TypeQL;
-import com.vaticle.typeql.lang.query.TypeQLGet;
-import com.vaticle.typeql.lang.query.TypeQLInsert;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Paths;
-import java.text.SimpleDateFormat;
-import java.util.Date;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static com.vaticle.typeql.lang.TypeQL.cVar;
 
 public class Main {
     static int k = 0; // Counter
     public static void main(String[] args) {
-        final String DB_NAME = "iam"; // Name of a database to connect to
-        final String SERVER_ADDR = "127.0.0.1:1729"; // Address of a TypeDB Core server to connect to
+        final String DB_NAME = "iam";
+        final String SERVER_ADDR = "127.0.0.1:1729";
 
-        System.out.println("IAM Sample App");
+        System.out.println("TypeDB Manual sample code");
 
-        System.out.println("Attempting to connect to a TypeDB Core server: " + SERVER_ADDR);
-        TypeDBDriver driver = TypeDB.coreDriver(SERVER_ADDR); // the driver is connected to the server
+        TypeDBDriver driver = TypeDB.coreDriver(SERVER_ADDR);
+        driver.databases().all().forEach( result -> System.out.println(result.name()));
         if (driver.databases().contains(DB_NAME)) {
-            System.out.println("Found a pre-existing database! Re-creating with the default schema and data...");
             driver.databases().get(DB_NAME).delete();
         }
         driver.databases().create(DB_NAME);
+
         if (driver.databases().contains(DB_NAME)) {
-            System.out.println("Empty database created");
+            System.out.println("Database setup complete.");
         }
-        System.out.println("Opening a Schema session to define a schema.");
+
         try (TypeDBSession session = driver.session(DB_NAME, TypeDBSession.Type.SCHEMA)) {
-            try (TypeDBTransaction writeTransaction = session.transaction(TypeDBTransaction.Type.WRITE)) {
-                String defineQuery = Files.readString(Paths.get("iam-schema.tql"));
-                writeTransaction.query().define(defineQuery);
-                writeTransaction.commit();
-
-            } catch (IOException e) {
-                throw new RuntimeException(e);
+            try (TypeDBTransaction transaction = session.transaction(TypeDBTransaction.Type.WRITE)) {
+                String defineQuery = """
+                                    define
+                                    email sub attribute, value string;
+                                    name sub attribute, value string;
+                                    friendship sub relation, relates friend;
+                                    user sub entity,
+                                        owns email @key,
+                                        owns name,
+                                        plays friendship:friend;
+                                    admin sub user;
+                                    """;
+                transaction.query().define(defineQuery).resolve();
+                transaction.commit();
             }
         }
-        System.out.println("Opening a Data session to insert data.");
-        try (TypeDBSession session = driver.session(DB_NAME, TypeDBSession.Type.DATA)) {
-            try (TypeDBTransaction writeTransaction = session.transaction(TypeDBTransaction.Type.WRITE)) {
-                String insertQuery = Files.readString(Paths.get("iam-data-single-query.tql"));
-                writeTransaction.query().insert(insertQuery);
-                writeTransaction.commit();
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
 
-            System.out.println("Testing the new database.");
-            try (TypeDBTransaction readTransaction = session.transaction(TypeDBTransaction.Type.READ)) { // Re-using a session to open a new transaction
-                long result = readTransaction.query().getAggregate("match $u isa user; get $u; count;").resolve().get().asLong();
-                if (result == 3) {
-                    System.out.println("Database setup complete. Test passed.");
+        try (TypeDBSession session = driver.session(DB_NAME, TypeDBSession.Type.SCHEMA)) {
+            try (TypeDBTransaction transaction = session.transaction(TypeDBTransaction.Type.WRITE)) {
+                String undefineQuery = "undefine admin sub user;";
+                transaction.query().undefine(undefineQuery).resolve();
+                transaction.commit();
+            }
+        }
+
+        try (TypeDBSession session = driver.session(DB_NAME, TypeDBSession.Type.DATA)) {
+            try (TypeDBTransaction transaction = session.transaction(TypeDBTransaction.Type.WRITE)) {
+                String insertQuery = """
+                                    insert
+                                    $user1 isa user, has name "Alice", has email "alice@vaticle.com";
+                                    $user2 isa user, has name "Bob", has email "bob@vaticle.com";
+                                    $friendship (friend:$user1, friend: $user2) isa friendship;
+                                    """;
+                transaction.query().insert(insertQuery);
+                transaction.commit();
+            }
+        }
+
+        try (TypeDBSession session = driver.session(DB_NAME, TypeDBSession.Type.DATA)) {
+            try (TypeDBTransaction transaction = session.transaction(TypeDBTransaction.Type.WRITE)) {
+                String matchInsertQuery = """
+                                        match
+                                        $u isa user, has name "Bob";
+                                        insert
+                                        $new-u isa user, has name "Charlie", has email "charlie@vaticle.com";
+                                        $f($u,$new-u) isa friendship;
+                                        """;
+                long response_count = transaction.query().insert(matchInsertQuery).count();
+                if (response_count == 1) {
+                    transaction.commit();
                 } else {
-                    System.out.println("Test failed with the following result:" + result + " expected result: 3.");
-                    System.exit(0);
+                    transaction.close();
                 }
             }
         }
 
-        System.out.println("Commencing sample requests");
         try (TypeDBSession session = driver.session(DB_NAME, TypeDBSession.Type.DATA)) {
-
-            System.out.println("");
-            System.out.println("Request #1: User listing");
-            try (TypeDBTransaction readTransaction = session.transaction(TypeDBTransaction.Type.READ)) {
-                k = 0; // reset the counter
-                readTransaction.query().get( // Executing query
-                        "match $u isa user, has full-name $n, has email $e; get;" // TypeQL query string
-                ).forEach(result -> { // Iterating through results
-                    String name = result.get("n").asAttribute().getValue().asString();
-                    String email = result.get("e").asAttribute().getValue().asString();
-                    k += 1;
-                    System.out.println("User #" + k + ": " + name + ", has E-mail: " + email);
-                });
-                System.out.println("Users found: " + k);
-            }
-
-            System.out.println("");
-            System.out.println("Request #2: Files that Kevin Morrison has access to");
-            try (TypeDBTransaction readTransaction = session.transaction(TypeDBTransaction.Type.READ)) {
-                TypeQLGet getQuery = TypeQL.match( // Java query builder to prepare TypeQL query string
-                        cVar("u").isa("user").has("full-name", "Kevin Morrison"),
-                        cVar("p").rel(cVar("u")).rel(cVar("pa")).isa("permission"),
-                        cVar("o").isa("object").has("path", cVar("fp")),
-                        cVar("pa").rel(cVar("o")).rel(cVar("va")).isa("access")
-                ).get(cVar("fp"));
-                k = 0;
-                readTransaction.query().get(getQuery).forEach(result -> { // Executing query
-                    k += 1;
-                    System.out.println("File #" + k + ": " + result.get("fp").asAttribute().getValue().asString());
-                });
-                System.out.println("Files found: " + k);
-            }
-
-            System.out.println("");
-            System.out.println("Request #3: Files that Kevin Morrison has view access to (with inference)");
-            TypeDBOptions options = new TypeDBOptions().infer(true);
-            try (TypeDBTransaction readTransaction = session.transaction(TypeDBTransaction.Type.READ, options)) {
-                TypeQLGet getQuery = TypeQL.match( // Java query builder to prepare TypeQL query string
-                        cVar("u").isa("user").has("full-name", "Kevin Morrison"),
-                        cVar("p").rel(cVar("u")).rel(cVar("pa")).isa("permission"),
-                        cVar("o").isa("object").has("path", cVar("fp")),
-                        cVar("pa").rel(cVar("o")).rel(cVar("va")).isa("access"),
-                        cVar("va").isa("action").has("name", "view_file")
-                ).get(cVar("fp")).sort(cVar("fp")).offset(0).limit(5);
-                k = 0;
-                readTransaction.query().get(getQuery).forEach(result -> { // Executing query
-                    k += 1;
-                    System.out.println("File #" + k + ": " + result.get("fp").asAttribute().getValue().asString());
-                });
-
-                getQuery = TypeQL.match( // Java query builder to prepare TypeQL query string
-                        cVar("u").isa("user").has("full-name", "Kevin Morrison"),
-                        cVar("p").rel(cVar("u")).rel(cVar("pa")).isa("permission"),
-                        cVar("o").isa("object").has("path", cVar("fp")),
-                        cVar("pa").rel(cVar("o")).rel(cVar("va")).isa("access"),
-                        cVar("va").isa("action").has("name", "view_file")
-                ).get(cVar("fp")).sort(cVar("fp")).offset(5).limit(5);
-                readTransaction.query().get(getQuery).forEach(result -> { // Executing query
-                    k += 1;
-                    System.out.println("File #" + k + ": " + result.get("fp").asAttribute().getValue().asString());
-                });
-                System.out.println("Files found: " + k);
-            }
-
-            System.out.println("");
-            System.out.println("Request #4: Add a new file and a view access to it");
-            try (TypeDBTransaction writeTransaction = session.transaction(TypeDBTransaction.Type.WRITE)) { // WRITE transaction is open
-                String filepath = "logs/" + new SimpleDateFormat("yyyy-MM-dd'T'hh:mm:ss.SSS").format(new Date(System.currentTimeMillis())) + ".log";
-                TypeQLInsert insertQuery = TypeQL.insert(cVar("f").isa("file").has("path", filepath));
-                System.out.println("Inserting file: " + filepath);
-                writeTransaction.query().insert(insertQuery); // Executing the query
-                insertQuery = TypeQL.match(
-                        cVar("f").isa("file").has("path", filepath),
-                        cVar("vav").isa("action").has("name", "view_file")
-                ).insert(
-                    cVar("pa").rel(cVar("vav")).rel(cVar("f")).isa("access")
-                );
-                System.out.println("Adding view access to the file");
-                writeTransaction.query().insert(insertQuery); // Executing the second query
-                writeTransaction.commit();
+            try (TypeDBTransaction transaction = session.transaction(TypeDBTransaction.Type.WRITE)) {
+                String deleteQuery = """
+                                    match
+                                    $u isa user, has name "Charlie";
+                                    $f ($u) isa friendship;
+                                    delete
+                                    $f isa friendship;
+                                    """;
+                transaction.query().delete(deleteQuery).resolve();
+                transaction.commit();
             }
         }
-        driver.close(); // closing server connection
+
+        try (TypeDBSession session = driver.session(DB_NAME, TypeDBSession.Type.DATA)) {
+            try (TypeDBTransaction transaction = session.transaction(TypeDBTransaction.Type.WRITE)) {
+                String updateQuery = """
+                                    match
+                                    $u isa user, has name "Charlie", has email $e;
+                                    delete
+                                    $u has $e;
+                                    insert
+                                    $u has email "charles@vaticle.com";
+                                    """;
+                long response_count = transaction.query().update(updateQuery).count();
+                if (response_count == 1) {
+                    transaction.commit();
+                } else {
+                    transaction.close();
+                }
+            }
+        }
+
+        try (TypeDBSession session = driver.session(DB_NAME, TypeDBSession.Type.DATA)) {
+            try (TypeDBTransaction transaction = session.transaction(TypeDBTransaction.Type.READ)) {
+                String fetchQuery = """
+                                    match
+                                    $u isa user;
+                                    fetch
+                                    $u: name, email;
+                                    """;
+                AtomicInteger counter = new AtomicInteger(0);
+                transaction.query().fetch(fetchQuery).forEach(result -> {
+                    counter.addAndGet(1);
+                    System.out.println("User #" + counter + ": " + result.toString());
+                });
+            }
+        }
+
+        try (TypeDBSession session = driver.session(DB_NAME, TypeDBSession.Type.DATA)) {
+            try (TypeDBTransaction transaction = session.transaction(TypeDBTransaction.Type.READ)) {
+                String getQuery = """
+                                    match
+                                    $u isa user, has email $e;
+                                    get
+                                    $e;
+                                    """;
+                AtomicInteger counter = new AtomicInteger(0);
+                transaction.query().get(getQuery).forEach(result -> {
+                    counter.addAndGet(1);
+                    System.out.println("Email #" + counter + ": " + result.get("e").asAttribute().getValue().toString());
+                });
+            }
+        }
+
+        try (TypeDBSession session = driver.session(DB_NAME, TypeDBSession.Type.SCHEMA)) {
+            try (TypeDBTransaction transaction = session.transaction(TypeDBTransaction.Type.WRITE)) {
+                String defineQuery = """
+                                    define
+                                    rule users:
+                                    when {
+                                        $u isa user;
+                                    } then {
+                                        $u has name "User";
+                                    };
+                                    """;
+                transaction.query().define(defineQuery).resolve();
+                transaction.commit();
+            }
+        }
+
+        try (TypeDBSession session = driver.session(DB_NAME, TypeDBSession.Type.DATA)) {
+            TypeDBOptions options = new TypeDBOptions().infer(true);
+            try (TypeDBTransaction transaction = session.transaction(TypeDBTransaction.Type.READ, options)) {
+                String fetchQuery = """
+                                    match
+                                    $u isa user;
+                                    fetch
+                                    $u: name, email;
+                                    """;
+                AtomicInteger counter = new AtomicInteger(0);
+                transaction.query().fetch(fetchQuery).forEach(result -> {
+                    counter.addAndGet(1);
+                    System.out.println("User #" + counter + ": " + result.toString());
+                });
+            }
+        }
+        driver.close();
     }
 }
