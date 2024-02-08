@@ -6,8 +6,6 @@ import com.vaticle.typedb.driver.api.TypeDBOptions;
 import com.vaticle.typedb.driver.api.TypeDBSession;
 import com.vaticle.typedb.driver.api.TypeDBTransaction;
 
-import java.util.concurrent.atomic.AtomicInteger;
-
 public class Main {
     public static void main(String[] args) {
         final String DB_NAME = "iam";
@@ -124,11 +122,8 @@ public class Main {
                                     fetch
                                     $u: name, email;
                                     """;
-                AtomicInteger counter = new AtomicInteger(0);
-                transaction.query().fetch(fetchQuery).forEach(result -> {
-                    counter.addAndGet(1);
-                    System.out.println("User #" + counter + ": " + result.toString());
-                });
+                int[] ctr = new int[1];
+                transaction.query().fetch(fetchQuery).forEach(result -> System.out.println("Email #" + (++ctr[0]) + ": " + result.toString()));
             }
         }
 
@@ -140,11 +135,8 @@ public class Main {
                                     get
                                     $e;
                                     """;
-                AtomicInteger counter = new AtomicInteger(0);
-                transaction.query().get(getQuery).forEach(result -> {
-                    counter.addAndGet(1);
-                    System.out.println("Email #" + counter + ": " + result.get("e").asAttribute().getValue().toString());
-                });
+                int[] ctr = new int[1];
+                transaction.query().get(getQuery).forEach(result -> System.out.println("Email #" + (++ctr[0]) + ": " + result.get("e").asAttribute().getValue().toString()));
             }
         }
 
@@ -173,11 +165,8 @@ public class Main {
                                     fetch
                                     $u: name, email;
                                     """;
-                AtomicInteger counter = new AtomicInteger(0);
-                transaction.query().fetch(fetchQuery).forEach(result -> {
-                    counter.addAndGet(1);
-                    System.out.println("User #" + counter + ": " + result.toString());
-                });
+                int[] ctr = new int[1];
+                transaction.query().fetch(fetchQuery).forEach(result -> System.out.println("Email #" + (++ctr[0]) + ": " + result.toString()));
             }
         }
         driver.close();
