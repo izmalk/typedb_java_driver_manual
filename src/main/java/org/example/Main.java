@@ -1,29 +1,36 @@
 package org.example;
-
+// tag::import[]
 import com.vaticle.typedb.driver.TypeDB;
 import com.vaticle.typedb.driver.api.TypeDBDriver;
 import com.vaticle.typedb.driver.api.TypeDBOptions;
 import com.vaticle.typedb.driver.api.TypeDBSession;
 import com.vaticle.typedb.driver.api.TypeDBTransaction;
 
+// end::import[]
 public class Main {
     public static void main(String[] args) {
-        final String DB_NAME = "iam";
+        final String DB_NAME = "sample_db";
         final String SERVER_ADDR = "127.0.0.1:1729";
 
         System.out.println("TypeDB Manual sample code");
-
+        // tag::driver[]
         TypeDBDriver driver = TypeDB.coreDriver(SERVER_ADDR);
+        // end::driver[]
+        // tag::list-db[]
         driver.databases().all().forEach( result -> System.out.println(result.name()));
+        // end::list-db[]
+        // tag::delete-db[]
         if (driver.databases().contains(DB_NAME)) {
             driver.databases().get(DB_NAME).delete();
         }
+        // end::delete-db[]
+        // tag::create-db[]
         driver.databases().create(DB_NAME);
-
+        // end::create-db[]
         if (driver.databases().contains(DB_NAME)) {
             System.out.println("Database setup complete.");
         }
-
+        // tag::define[]
         try (TypeDBSession session = driver.session(DB_NAME, TypeDBSession.Type.SCHEMA)) {
             try (TypeDBTransaction transaction = session.transaction(TypeDBTransaction.Type.WRITE)) {
                 String defineQuery = """
@@ -41,7 +48,8 @@ public class Main {
                 transaction.commit();
             }
         }
-
+        // end::define[]
+        // tag::undefine[]
         try (TypeDBSession session = driver.session(DB_NAME, TypeDBSession.Type.SCHEMA)) {
             try (TypeDBTransaction transaction = session.transaction(TypeDBTransaction.Type.WRITE)) {
                 String undefineQuery = "undefine admin sub user;";
@@ -49,7 +57,8 @@ public class Main {
                 transaction.commit();
             }
         }
-
+        // end::undefine[]
+        // tag::insert[]
         try (TypeDBSession session = driver.session(DB_NAME, TypeDBSession.Type.DATA)) {
             try (TypeDBTransaction transaction = session.transaction(TypeDBTransaction.Type.WRITE)) {
                 String insertQuery = """
@@ -62,7 +71,8 @@ public class Main {
                 transaction.commit();
             }
         }
-
+        // end::insert[]
+        // tag::match-insert[]
         try (TypeDBSession session = driver.session(DB_NAME, TypeDBSession.Type.DATA)) {
             try (TypeDBTransaction transaction = session.transaction(TypeDBTransaction.Type.WRITE)) {
                 String matchInsertQuery = """
@@ -80,7 +90,8 @@ public class Main {
                 }
             }
         }
-
+        // end::match-insert[]
+        // tag::delete[]
         try (TypeDBSession session = driver.session(DB_NAME, TypeDBSession.Type.DATA)) {
             try (TypeDBTransaction transaction = session.transaction(TypeDBTransaction.Type.WRITE)) {
                 String deleteQuery = """
@@ -94,7 +105,8 @@ public class Main {
                 transaction.commit();
             }
         }
-
+        // end::delete[]
+        // tag::update[]
         try (TypeDBSession session = driver.session(DB_NAME, TypeDBSession.Type.DATA)) {
             try (TypeDBTransaction transaction = session.transaction(TypeDBTransaction.Type.WRITE)) {
                 String updateQuery = """
@@ -113,7 +125,8 @@ public class Main {
                 }
             }
         }
-
+        // end::update[]
+        // tag::fetch[]
         try (TypeDBSession session = driver.session(DB_NAME, TypeDBSession.Type.DATA)) {
             try (TypeDBTransaction transaction = session.transaction(TypeDBTransaction.Type.READ)) {
                 String fetchQuery = """
@@ -126,7 +139,8 @@ public class Main {
                 transaction.query().fetch(fetchQuery).forEach(result -> System.out.println("Email #" + (++ctr[0]) + ": " + result.toString()));
             }
         }
-
+        // end::fetch[]
+        // tag::get[]
         try (TypeDBSession session = driver.session(DB_NAME, TypeDBSession.Type.DATA)) {
             try (TypeDBTransaction transaction = session.transaction(TypeDBTransaction.Type.READ)) {
                 String getQuery = """
@@ -139,7 +153,8 @@ public class Main {
                 transaction.query().get(getQuery).forEach(result -> System.out.println("Email #" + (++ctr[0]) + ": " + result.get("e").asAttribute().getValue().toString()));
             }
         }
-
+        // end::get[]
+        // tag::infer[]
         try (TypeDBSession session = driver.session(DB_NAME, TypeDBSession.Type.SCHEMA)) {
             try (TypeDBTransaction transaction = session.transaction(TypeDBTransaction.Type.WRITE)) {
                 String defineQuery = """
@@ -169,6 +184,7 @@ public class Main {
                 transaction.query().fetch(fetchQuery).forEach(result -> System.out.println("Email #" + (++ctr[0]) + ": " + result.toString()));
             }
         }
+        // end::infer[]
         driver.close();
     }
 }
