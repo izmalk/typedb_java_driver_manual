@@ -223,13 +223,13 @@ public class Main {
             try (TypeDBTransaction Transaction = session.transaction(TypeDBTransaction.Type.WRITE)) {
                 Rule oldRule = Transaction.logic().getRule("users").resolve();
                 System.out.println("Rule label: " + oldRule.getLabel());
+                System.out.println("  Condition: " + oldRule.getWhen().toString());
+                System.out.println("  Conclusion: " + oldRule.getThen().toString());
                 Pattern condition = TypeQL.parsePattern("{$u isa user, has email $e; $e contains '@vaticle.com';}");
                 Pattern conclusion = TypeQL.parsePattern("$u has name 'Employee'");
                 Rule newRule = Transaction.logic().putRule("Employee", condition, conclusion).resolve();
                 Transaction.logic().getRules().forEach(result -> {
-                    System.out.println("Rule: " + result.getLabel());
-                    System.out.println("  Condition: " + result.getWhen().toString());
-                    System.out.println("  Conclusion: " + result.getThen().toString());
+                    System.out.println(result.getLabel());
                 });
                 newRule.delete(Transaction).resolve();
                 Transaction.commit();
