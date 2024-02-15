@@ -6,12 +6,21 @@ import com.vaticle.typedb.driver.api.TypeDBOptions;
 import com.vaticle.typedb.driver.api.TypeDBSession;
 import com.vaticle.typedb.driver.api.TypeDBTransaction;
 import com.vaticle.typedb.driver.api.concept.Concept;
+import com.vaticle.typedb.driver.api.concept.thing.Attribute;
+import com.vaticle.typedb.driver.api.concept.thing.Entity;
 import com.vaticle.typedb.driver.api.concept.type.AttributeType;
 import com.vaticle.typedb.driver.api.concept.type.EntityType;
+import com.vaticle.typedb.driver.api.concept.type.ThingType;
 import com.vaticle.typedb.driver.api.concept.value.Value;
 import com.vaticle.typedb.driver.api.logic.Rule;
 import com.vaticle.typeql.lang.TypeQL;
 import com.vaticle.typeql.lang.pattern.Pattern;
+
+
+import java.util.Collections;
+import java.util.Set;
+
+
 // end::import[]
 public class Main {
     public static void main(String[] args) {
@@ -236,6 +245,22 @@ public class Main {
             }
         }
         // end::rules-api[]
+        // tag::data-api[]
+        try (TypeDBSession session = driver.session(DB_NAME, TypeDBSession.Type.DATA)) {
+            try (TypeDBTransaction Transaction = session.transaction(TypeDBTransaction.Type.WRITE)) {
+                Set<ThingType.Annotation> annotations = Collections.emptySet();
+                Transaction.concepts().getEntityType("user").resolve().getInstances(Transaction).forEach(user -> {
+                            System.out.println("User");
+                            user.getHas(Transaction, annotations).forEach(attribute -> {
+                                System.out.println(attribute.getType().getLabel().toString()+ ": " + attribute.getValue().toString());
+                            });
+                });
+                Entity new_user = Transaction.concepts().getEntityType("user").resolve().create(Transaction).resolve();
+                new_user.delete(Transaction).resolve();
+                Transaction.commit();
+            }
+        }
+        // end::data-api[]
         driver.close();
     }
 }
